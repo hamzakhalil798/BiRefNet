@@ -5,8 +5,8 @@ import math
 class Config():
     def __init__(self) -> None:
         # Main active settings
-        self.batch_size = 8                                     # Multi-GPU+BF16 training for 76GB / 62GB, without/with compile, on each A100.
-        self.compile = True                                     # 1. PyTorch<=2.0.1 has an inherent CPU memory leak problem; 2.0.1<PyTorch<2.5.0 cannot successfully compile.
+        self.batch_size = 4                                     # Multi-GPU+BF16 training for 76GB / 62GB, without/with compile, on each A100.
+        self.compile = False                                     # 1. PyTorch<=2.0.1 has an inherent CPU memory leak problem; 2.0.1<PyTorch<2.5.0 cannot successfully compile.
         self.mixed_precision = ['no', 'fp16', 'bf16', 'fp8'][2] # 2. FP8 doesn't show acceleration in the torch.compile mode.
         self.SDPA_enabled = True                                # H200x1 + compile==True.  None: 43GB + 14s, math: 43GB + 15s, mem_eff: 35GB + 15s.
                                                                 # H200x1 + compile==False. None: 54GB + 25s, math: 51GB + 26s, mem_eff: 40GB + 25s.
@@ -17,14 +17,14 @@ class Config():
         self.data_root_dir = os.path.join(self.sys_home_dir, 'datasets/dis')
 
         # TASK settings
-        self.task = ['DIS5K', 'COD', 'HRSOD', 'General', 'General-2K', 'Matting'][0]
+        self.task = ['DIS5K', 'COD', 'HRSOD', 'Custom', 'General-2K', 'Matting'][3]
         self.testsets = {
             # Benchmarks
             'DIS5K': ','.join(['DIS-VD', 'DIS-TE1', 'DIS-TE2', 'DIS-TE3', 'DIS-TE4'][:1]),
             'COD': ','.join(['CHAMELEON', 'NC4K', 'TE-CAMO', 'TE-COD10K']),
             'HRSOD': ','.join(['DAVIS-S', 'TE-HRSOD', 'TE-UHRSD', 'DUT-OMRON', 'TE-DUTS']),
             # Practical use
-            'General': ','.join(['DIS-VD', 'TE-P3M-500-NP']),
+            'Custom': ','.join(['TE-custom']),
             'General-2K': ','.join(['DIS-VD', 'TE-P3M-500-NP']),
             'Matting': ','.join(['TE-P3M-500-NP', 'TE-AM-2k']),
         }[self.task]
@@ -33,7 +33,7 @@ class Config():
             'DIS5K': ['DIS-TR', 'DIS-TR+DIS-TE1+DIS-TE2+DIS-TE3+DIS-TE4'][0],
             'COD': 'TR-COD10K+TR-CAMO',
             'HRSOD': ['TR-DUTS', 'TR-HRSOD', 'TR-UHRSD', 'TR-DUTS+TR-HRSOD', 'TR-DUTS+TR-UHRSD', 'TR-HRSOD+TR-UHRSD', 'TR-DUTS+TR-HRSOD+TR-UHRSD'][5],
-            'General': datasets_all,
+            'Custom': 'TR-custom',
             'General-2K': datasets_all,
             'Matting': datasets_all,
         }[self.task]
@@ -68,7 +68,7 @@ class Config():
                 'DIS5K': -40,
                 'COD': -20,
                 'HRSOD': -20,
-                'General': -20,
+                'Custom': -20,
                 'General-2K': -20,
                 'Matting': -10,
             }[self.task]
@@ -133,7 +133,7 @@ class Config():
                 'cnt': 5 * 0,
                 'structure': 5 * 0,
             }
-        elif self.task in ['General', 'General-2K']:
+        elif self.task in ['Custom', 'General-2K']:
             self.lambdas_pix_last = {
                 'bce': 30 * 1,
                 'iou': 0.5 * 1,
