@@ -4,36 +4,27 @@ from glob import glob
 from tqdm import tqdm
 import cv2
 import torch
-from contextlib import nullcontext
 
 from dataset import MyData
-from models.birefnet import BiRefNet
+from models.birefnet import BiRefNet, BiRefNetC2F
 from utils import save_tensor_img, check_state_dict
 from config import Config
 
 
 config = Config()
 
-mixed_precision = config.mixed_precision
-if mixed_precision == 'fp16':
-    mixed_dtype = torch.float16
-elif mixed_precision == 'bf16':
-    mixed_dtype = torch.bfloat16
-else:
-    mixed_dtype = None
-
-autocast_ctx = torch.amp.autocast(device_type='cuda', dtype=mixed_dtype) if mixed_dtype else nullcontext()
-
 
 def inference(model, data_loader_test, pred_root, method, testset, device=0):
     model_training = model.training
     if model_training:
         model.eval()
-    for batch in tqdm(data_loader_test, total=len(data_loader_test)) if config.verbose_eval else data_loader_test:
-        inputs = batch[0].to(device)
+    model.half()
+    for batch in tqdm(data_loader_test, total=len(data_loader_test)) if 1 or config.verbose_eval else data_loader_test:
+        inputs = batch[0].to(device).half()
+        # gts = batch[1].to(device)
         label_paths = batch[-1]
-        with autocast_ctx, torch.no_grad():
-            scaled_preds = model(inputs)[-1].sigmoid().to(torch.float32)
+        with torch.no_grad():
+            scaled_preds = model(inputs)[-1].sigmoid()
 
         os.makedirs(os.path.join(pred_root, method, testset), exist_ok=True)
 
@@ -51,6 +42,8 @@ def inference(model, data_loader_test, pred_root, method, testset, device=0):
 
 
 def main(args):
+    # Init model
+
     device = config.device
     if args.ckpt_folder:
         print('Testing with models in {}'.format(args.ckpt_folder))
@@ -59,9 +52,8 @@ def main(args):
 
     if config.model == 'BiRefNet':
         model = BiRefNet(bb_pretrained=False)
-    else:
-        print('Undefined model: {}.'.format(config.model))
-        return None
+    elif config.model == 'BiRefNetC2F':
+        model = BiRefNetC2F(bb_pretrained=False)
     weights_lst = sorted(
         glob(os.path.join(args.ckpt_folder, '*.pth')) if args.ckpt_folder else [args.ckpt],
         key=lambda x: int(x.split('epoch_')[-1].split('.pth')[0]),
@@ -75,8 +67,7 @@ def main(args):
             data_size = config.size
         else:
             data_size = [int(l) for l in args.resolution.split('x')]
-    except Exception as e:
-        print(f"Exception: {type(e).__name__} at line {e.__traceback__.tb_lineno} of {__file__}: {e}")
+    except:
         # default as the config.size.
         data_size = config.size
 
@@ -105,7 +96,8 @@ if __name__ == '__main__':
     # Parameter from command line
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--ckpt', type=str, help='model folder')
-    parser.add_argument('--ckpt_folder', default=sorted(glob(os.path.join('ckpts', '*')))[-1], type=str, help='model folder')
+    _ckpt_glob = sorted(glob(os.path.join('ckpts', '*')))
+    parser.add_argument('--ckpt_folder', default=_ckpt_glob[-1] if _ckpt_glob else '', type=str, help='model folder')
     parser.add_argument('--pred_root', default='e_preds', type=str, help='Output folder')
     parser.add_argument('--resolution', default='default', type=str, help='WeixHei')
     parser.add_argument('--testsets',
