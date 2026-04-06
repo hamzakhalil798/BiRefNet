@@ -4,13 +4,6 @@ import math
 
 class Config():
     def __init__(self) -> None:
-        # Main active settings
-        self.batch_size = 4                                     # Multi-GPU+BF16 training for 76GB / 62GB, without/with compile, on each A100.
-        self.compile = False                                     # 1. PyTorch<=2.0.1 has an inherent CPU memory leak problem; 2.0.1<PyTorch<2.5.0 cannot successfully compile.
-        self.mixed_precision = ['no', 'fp16', 'bf16', 'fp8'][2] # 2. FP8 doesn't show acceleration in the torch.compile mode.
-        self.SDPA_enabled = True                                # H200x1 + compile==True.  None: 43GB + 14s, math: 43GB + 15s, mem_eff: 35GB + 15s.
-                                                                # H200x1 + compile==False. None: 54GB + 25s, math: 51GB + 26s, mem_eff: 40GB + 25s.
-
         # PATH settings
         # Make up your file system as: SYS_HOME_DIR/codes/dis/BiRefNet, SYS_HOME_DIR/datasets/dis/xx, SYS_HOME_DIR/weights/xx
         self.sys_home_dir = [os.path.expanduser('~'), '/workspace'][1]   # Default, custom
@@ -44,11 +37,12 @@ class Config():
         self.background_color_synthesis = False             # whether to use pure bg color to replace the original backgrounds.
 
         # Faster-Training settings
+        self.load_all = False and self.dynamic_size is None   # Turn it on/off by your case. It may consume a lot of CPU memory. And for multi-GPU (N), it would cost N times the CPU memory to load the data.
+        self.compile = False                             # 1. Trigger CPU memory leak in some extend, which is an inherent problem of PyTorch.
+                                                        #   Machines with > 70GB CPU memory can run the whole training on DIS5K with default setting.
+                                                        # 2. Higher PyTorch version may fix it: https://github.com/pytorch/pytorch/issues/119607.
+                                                        # 3. But compile in 2.0.1 < Pytorch < 2.5.0 seems to bring no acceleration for training.
         self.precisionHigh = True
-        self.load_all = False and self.dynamic_size is None     # Turn it on/off by your case. It may consume a lot of CPU memory. And for multi-GPU (N), it would cost N times the CPU memory to load the data.
-                                                                #   Machines with > 70GB CPU memory can run the whole training on DIS5K with default setting.
-                                                                # 2. Higher PyTorch version may fix it: https://github.com/pytorch/pytorch/issues/119607.
-                                                                # 3. But compile in 2.0.1 < Pytorch < 2.5.0 seems to bring no acceleration for training.
 
         # MODEL settings
         self.ms_supervision = True
@@ -62,6 +56,7 @@ class Config():
         self.dec_blk = ['BasicDecBlk', 'ResBlk'][0]
 
         # TRAINING settings
+        self.batch_size = 4
         self.finetune_last_epochs = [
             0,
             {
@@ -73,34 +68,23 @@ class Config():
                 'Matting': -10,
             }[self.task]
         ][1]    # choose 0 to skip
-        self.lr = (1e-4 if 'DIS5K' in self.task else 1e-5) * math.sqrt(self.batch_size / 4)     # DIS needs high lr to converge faster. Adapt the lr linearly
-        self.num_workers = max(4, self.batch_size)          # will be decreased to min(it, batch_size) at the initialization of the data_loader
+        self.lr = (1e-4 if 'DIS5K' in self.task else 1e-4) * math.sqrt(self.batch_size / 4)     # DIS needs high lr to converge faster. Adapt the lr linearly
+        self.num_workers = max(4, self.batch_size)          # will be decrease to min(it, batch_size) at the initialization of the data_loader
 
         # Backbone settings
         self.bb = [
-            'vgg16', 'vgg16bn', 'resnet50',
-
-            'swin_v1_l', 'swin_v1_b',
-            'swin_v1_s', 'swin_v1_t',
-
-            'pvt_v2_b5', 'pvt_v2_b2',
-            'pvt_v2_b1', 'pvt_v2_b0',
-
-            'dino_v3_7b', 'dino_v3_h_plus', 'dino_v3_l',
-            'dino_v3_b', 'dino_v3_s_plus', 'dino_v3_s',
-        ][3]
-        self.freeze_bb = 'dino_v3' in self.bb
+            'vgg16', 'vgg16bn', 'resnet50',         # 0, 1, 2
+            'swin_v1_t', 'swin_v1_s',               # 3, 4
+            'swin_v1_b', 'swin_v1_l',               # 5-bs9, 6-bs4
+            'pvt_v2_b0', 'pvt_v2_b1',               # 7, 8
+            'pvt_v2_b2', 'pvt_v2_b5',               # 9-bs10, 10-bs5
+        ][6]
         self.lateral_channels_in_collection = {
             'vgg16': [512, 512, 256, 128], 'vgg16bn': [512, 512, 256, 128], 'resnet50': [2048, 1024, 512, 256],
-
-            'dino_v3_7b': [4096] * 4, 'dino_v3_h_plus': [1280] * 4, 'dino_v3_l': [1024] * 4,
-            'dino_v3_b': [768] * 4, 'dino_v3_s_plus': [384] * 4, 'dino_v3_s': [384] * 4,
-
-            'swin_v1_l': [1536, 768, 384, 192], 'swin_v1_b': [1024, 512, 256, 128],
-            'swin_v1_s': [768, 384, 192, 96], 'swin_v1_t': [768, 384, 192, 96],
-
-            'pvt_v2_b5': [512, 320, 128, 64], 'pvt_v2_b2': [512, 320, 128, 64],
-            'pvt_v2_b1': [512, 320, 128, 64], 'pvt_v2_b0': [256, 160, 64, 32],
+            'pvt_v2_b2': [512, 320, 128, 64], 'pvt_v2_b5': [512, 320, 128, 64],
+            'swin_v1_b': [1024, 512, 256, 128], 'swin_v1_l': [1536, 768, 384, 192],
+            'swin_v1_t': [768, 384, 192, 96], 'swin_v1_s': [768, 384, 192, 96],
+            'pvt_v2_b0': [256, 160, 64, 32], 'pvt_v2_b1': [512, 320, 128, 64],
         }[self.bb]
         if self.mul_scl_ipt == 'cat':
             self.lateral_channels_in_collection = [channel * 2 for channel in self.lateral_channels_in_collection]
@@ -109,9 +93,16 @@ class Config():
         # MODEL settings - inactive
         self.lat_blk = ['BasicLatBlk'][0]
         self.dec_channels_inter = ['fixed', 'adap'][0]
+        self.refine = ['', 'itself', 'RefUNet', 'Refiner', 'RefinerPVTInChannels4'][0]
+        self.progressive_ref = self.refine and True
+        self.ender = self.progressive_ref and False
+        self.scale = self.progressive_ref and 2
         self.auxiliary_classification = False       # Only for DIS5K, where class labels are saved in `dataset.py`.
+        self.refine_iteration = 1
+        self.freeze_bb = False
         self.model = [
             'BiRefNet',
+            'BiRefNetC2F',
         ][0]
 
         # TRAINING settings - inactive
@@ -167,30 +158,21 @@ class Config():
 
         # PATH settings - inactive
         self.weights_root_dir = os.path.join(self.sys_home_dir, 'weights/cv')
-        model_name_to_weights_file = {
-            'dino_v3_7b': 'vit_7b_patch16_dinov3.lvd1689m.pth', 'dino_v3_h_plus': 'vit_huge_plus_patch16_dinov3.lvd1689m.pth',
-            'dino_v3_l': 'vit_large_patch16_dinov3.lvd1689m.pth', 'dino_v3_b': 'vit_base_patch16_dinov3.lvd1689m.pth',
-            'dino_v3_s_plus': 'vit_small_plus_patch16_dinov3.lvd1689m.pth', 'dino_v3_s': 'vit_small_patch16_dinov3.lvd1689m.pth',
-            'swin_v1_l': 'swin_large_patch4_window12_384_22kto1k.pth', 'swin_v1_b': 'swin_base_patch4_window12_384_22kto1k.pth',
-            'swin_v1_t': 'swin_tiny_patch4_window7_224_22kto1k_finetune.pth', 'swin_v1_s': 'swin_small_patch4_window7_224_22kto1k_finetune.pth',
-            'pvt_v2_b5': 'pvt_v2_b5.pth', 'pvt_v2_b2': 'pvt_v2_b2.pth', 'pvt_v2_b1': 'pvt_v2_b1.pth', 'pvt_v2_b0': 'pvt_v2_b0.pth',
+        self.weights = {
+            'pvt_v2_b2': os.path.join(self.weights_root_dir, 'pvt_v2_b2.pth'),
+            'pvt_v2_b5': os.path.join(self.weights_root_dir, ['pvt_v2_b5.pth', 'pvt_v2_b5_22k.pth'][0]),
+            'swin_v1_b': os.path.join(self.weights_root_dir, ['swin_base_patch4_window12_384_22kto1k.pth', 'swin_base_patch4_window12_384_22k.pth'][0]),
+            'swin_v1_l': os.path.join(self.weights_root_dir, ['swin_large_patch4_window12_384_22kto1k.pth', 'swin_large_patch4_window12_384_22k.pth'][0]),
+            'swin_v1_t': os.path.join(self.weights_root_dir, ['swin_tiny_patch4_window7_224_22kto1k_finetune.pth'][0]),
+            'swin_v1_s': os.path.join(self.weights_root_dir, ['swin_small_patch4_window7_224_22kto1k_finetune.pth'][0]),
+            'pvt_v2_b0': os.path.join(self.weights_root_dir, ['pvt_v2_b0.pth'][0]),
+            'pvt_v2_b1': os.path.join(self.weights_root_dir, ['pvt_v2_b1.pth'][0]),
         }
-        self.weights = {}
-        for model_name, weights_file in model_name_to_weights_file.items():
-            if 'dino_v3' in model_name:
-                model_name_dir = 'DINOv3-timm'
-            elif 'swin_v1' in model_name:
-                model_name_dir = ''
-            elif 'pvt_v2' in model_name:
-                model_name_dir = ''
-            else:
-                model_name_dir = ''
-            self.weights[model_name] = os.path.join(self.weights_root_dir, model_name_dir, weights_file)
-
 
         # Callbacks - inactive
         self.verbose_eval = True
         self.only_S_MAE = False
+        self.SDPA_enabled = False    # Bugs. Slower and errors occur in multi-GPUs
 
         # others
         self.device = [0, 'cpu'][0]     # .to(0) == .to('cuda:0')
