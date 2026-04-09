@@ -68,7 +68,7 @@ class Config():
                 'Matting': -10,
             }[self.task]
         ][1]    # choose 0 to skip
-        self.lr = (1e-4 if 'DIS5K' in self.task else 1e-4) * math.sqrt(self.batch_size / 4)     # DIS needs high lr to converge faster. Adapt the lr linearly
+        self.lr = (1e-4 if 'DIS5K' in self.task else 1e-5) * math.sqrt(self.batch_size / 4)     # DIS needs high lr to converge faster. Adapt the lr linearly
         self.num_workers = max(4, self.batch_size)          # will be decrease to min(it, batch_size) at the initialization of the data_loader
 
         # Backbone settings
