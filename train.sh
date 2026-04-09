@@ -19,7 +19,7 @@ nproc_per_node=$(echo ${devices%%,} | grep -o "," | wc -l)
 to_be_distributed=`echo ${nproc_per_node} | awk '{if($e > 0) print "True"; else print "False";}'`
 
 echo Training started at $(date)
-resume_weights_path='/workspace/drive/MyDrive/train_birefnet/ckpts/background_removal_interior/epoch_5.pth'
+resume_weights_path='/workspace/weights/cv/BiRefNet-general-epoch_244.pth'
 ckpt_dir="/workspace/drive/MyDrive/train_birefnet/ckpts/${method}"
 if [ ${to_be_distributed} == "True" ]
 then
